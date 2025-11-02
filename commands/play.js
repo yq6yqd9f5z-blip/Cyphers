@@ -1,18 +1,27 @@
-const ytdl = require('ytdl-core');
+const axios = require('axios');
 const yts = require('yt-search');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 
 module.exports = {
     name: 'play',
-    description: 'Download music from YouTube - Updated Working Version',
+    description: 'Advanced Music Download - Bypass YouTube Restrictions',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
         if (!args.length) {
             await sock.sendMessage(from, {
-                text: `🎵 *MUSIC DOWNLOADER*\n\nUsage: .play <song name>\n\nExamples:\n.play believer\n.play asake\n.play omah lay`
+                text: `🎵 *ADVANCED MUSIC DOWNLOADER* ⚡
+
+🚀 *Usage:* .play <song name>
+
+🎯 *Examples:*
+.play believer imagine dragons
+.play asake lonely at the top
+.play omah lay holy ghost
+.play latest naija music
+
+💫 *Powered by Multi-Source Download Engine*`
             }, { quoted: msg });
             return;
         }
@@ -20,163 +29,302 @@ module.exports = {
         const searchQuery = args.join(' ');
         
         try {
+            // React immediately
             await sock.sendMessage(from, {
-                text: `🔍 Searching for: "${searchQuery}"\n⏳ Please wait...`
+                react: {
+                    text: '🎵',
+                    key: msg.key
+                }
+            });
+
+            await sock.sendMessage(from, {
+                text: `🔍 *Searching Across Multiple Sources...*\n\n"${searchQuery}"\n\n⚡ Initializing download engines...`
             }, { quoted: msg });
 
-            // Search for the video
+            // Search for the video first
             const searchResult = await yts(searchQuery);
             
             if (!searchResult.videos.length) {
                 await sock.sendMessage(from, {
-                    text: `❌ No results found for "${searchQuery}"`
+                    text: `❌ *No Results Found*\n\n"${searchQuery}"\n\nTry different keywords or check spelling.`
                 }, { quoted: msg });
                 return;
             }
 
-            // Get the first video
             const video = searchResult.videos[0];
-            const videoUrl = video.url;
             const videoTitle = video.title;
+            const videoUrl = video.url;
+            const videoId = video.videoId;
 
-            console.log(`🎬 Attempting download: ${videoTitle}`);
+            console.log(`🎬 Advanced Download: ${videoTitle}`);
 
-            // Try multiple download methods
-            const audioBuffer = await tryMultipleDownloadMethods(videoUrl);
+            // Try multiple download methods sequentially
+            const downloadResult = await advancedDownloadEngine(videoTitle, videoUrl, videoId);
             
-            if (audioBuffer) {
+            if (downloadResult.success) {
                 await sock.sendMessage(from, {
-                    audio: audioBuffer,
+                    audio: { url: downloadResult.audioUrl },
                     mimetype: 'audio/mpeg',
-                    fileName: `${videoTitle.substring(0, 40)}.mp3`,
+                    fileName: `${cleanFileName(videoTitle)}.mp3`,
                     ptt: false
-                });
-                
+                }, { quoted: msg });
+
                 await sock.sendMessage(from, {
-                    text: `✅ *Download Complete!*\n\n🎵 ${videoTitle}\n🎤 ${video.author.name}\n⏱️ ${video.timestamp}\n\nEnjoy your music! 🎧`
+                    react: {
+                        text: '✅',
+                        key: msg.key
+                    }
                 });
+
+                await sock.sendMessage(from, {
+                    text: `✅ *DOWNLOAD SUCCESSFUL!* 🎉\n\n🎵 *Title:* ${videoTitle}\n🎤 *Artist:* ${video.author?.name || 'Unknown'}\n⏱️ *Duration:* ${video.timestamp || 'Unknown'}\n💫 *Source:* ${downloadResult.source}\n\n🎧 Enjoy your music!`
+                });
+
             } else {
                 await sock.sendMessage(from, {
-                    text: `❌ Download failed for: ${videoTitle}\n\nThis video may be restricted or unavailable for download.`
+                    react: {
+                        text: '❌',
+                        key: msg.key
+                    }
+                });
+
+                // Fallback: Send YouTube link
+                await sock.sendMessage(from, {
+                    text: `🎵 *Alternative Solution*\n\n*Title:* ${videoTitle}\n*Duration:* ${video.timestamp}\n*Channel:* ${video.author?.name || 'Unknown'}\n\n🔗 *YouTube Link:* ${videoUrl}\n\n💡 *Tip:* You can use YouTube's download feature or try again later.`
                 });
             }
 
         } catch (error) {
-            console.error('Play command error:', error);
+            console.error('Advanced play error:', error);
             await sock.sendMessage(from, {
-                text: `❌ Error: ${error.message}\n\nTry a different song or check your connection.`
+                react: {
+                    text: '❌',
+                    key: msg.key
+                }
+            });
+            
+            await sock.sendMessage(from, {
+                text: `⚠️ *System Overload*\n\nDownload engines are currently busy. Try again in a few moments.\n\nError: ${error.message}`
             }, { quoted: msg });
         }
     }
 };
 
-// Try multiple download methods
-async function tryMultipleDownloadMethods(videoUrl) {
-    // Method 1: Try with different quality options
+// Advanced download engine with multiple sources
+async function advancedDownloadEngine(title, youtubeUrl, videoId) {
+    console.log('🚀 Starting advanced download engine...');
+
+    // Method 1: YouTube MP3 Conversion API
     try {
-        console.log('🔄 Trying method 1: Standard download');
-        return await downloadWithRetry(videoUrl);
+        console.log('🔄 Method 1: YouTube MP3 API');
+        const result = await youtubeMp3API(videoId);
+        if (result.success) return result;
     } catch (error) {
         console.log('Method 1 failed:', error.message);
     }
 
-    // Method 2: Try with no options
+    // Method 2: External Download Service
     try {
-        console.log('🔄 Trying method 2: Basic download');
-        return await downloadBasic(videoUrl);
+        console.log('🔄 Method 2: External Service');
+        const result = await externalDownloadService(youtubeUrl);
+        if (result.success) return result;
     } catch (error) {
         console.log('Method 2 failed:', error.message);
     }
 
-    // Method 3: Try with lowest quality
+    // Method 3: Online Converter API
     try {
-        console.log('🔄 Trying method 3: Lowest quality');
-        return await downloadLowestQuality(videoUrl);
+        console.log('🔄 Method 3: Online Converter');
+        const result = await onlineConverterAPI(youtubeUrl);
+        if (result.success) return result;
     } catch (error) {
         console.log('Method 3 failed:', error.message);
     }
 
-    return null;
+    // Method 4: Alternative YouTube Frontend
+    try {
+        console.log('🔄 Method 4: YouTube Alternative');
+        const result = await youtubeAlternative(youtubeUrl);
+        if (result.success) return result;
+    } catch (error) {
+        console.log('Method 4 failed:', error.message);
+    }
+
+    return { success: false, error: 'All download methods failed' };
 }
 
-// Download with retry logic
-function downloadWithRetry(videoUrl) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        
-        try {
-            const stream = ytdl(videoUrl, {
-                quality: 'highestaudio',
-                filter: 'audioonly',
-                highWaterMark: 1 << 25,
-            });
+// Method 1: YouTube to MP3 API
+async function youtubeMp3API(videoId) {
+    try {
+        const apis = [
+            `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`,
+            `https://youtube-mp3-download1.p.rapidapi.com/dl?id=${videoId}`,
+            `https://youtube-to-mp3.p.rapidapi.com/dl?id=${videoId}`
+        ];
 
-            stream.on('data', chunk => chunks.push(chunk));
-            stream.on('end', () => resolve(Buffer.concat(chunks)));
-            stream.on('error', reject);
+        for (const apiUrl of apis) {
+            try {
+                const response = await axios.get(apiUrl, {
+                    timeout: 10000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
 
-            // Timeout after 45 seconds
-            setTimeout(() => reject(new Error('Download timeout')), 45000);
-
-        } catch (error) {
-            reject(error);
+                if (response.data && response.data.link) {
+                    return {
+                        success: true,
+                        audioUrl: response.data.link,
+                        source: 'YouTube MP3 API'
+                    };
+                }
+            } catch (error) {
+                continue;
+            }
         }
-    });
+        throw new Error('All YouTube APIs failed');
+    } catch (error) {
+        throw error;
+    }
 }
 
-// Basic download without options
-function downloadBasic(videoUrl) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        
-        try {
-            const stream = ytdl(videoUrl);
+// Method 2: External Download Service
+async function externalDownloadService(youtubeUrl) {
+    try {
+        const services = [
+            `https://api.vevioz.com/api/button/mp3/${getVideoId(youtubeUrl)}`,
+            `https://api.onlinevideoconverter.pro/api/convert`,
+            `https://y2mate.com/api/convert`
+        ];
 
-            stream.on('data', chunk => chunks.push(chunk));
-            stream.on('end', () => resolve(Buffer.concat(chunks)));
-            stream.on('error', reject);
+        for (const serviceUrl of services) {
+            try {
+                const response = await axios.post(serviceUrl, {
+                    url: youtubeUrl,
+                    format: 'mp3'
+                }, {
+                    timeout: 15000,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
 
-            setTimeout(() => reject(new Error('Download timeout')), 45000);
-
-        } catch (error) {
-            reject(error);
+                if (response.data && response.data.url) {
+                    return {
+                        success: true,
+                        audioUrl: response.data.url,
+                        source: 'External Service'
+                    };
+                }
+            } catch (error) {
+                continue;
+            }
         }
-    });
+        throw new Error('All external services failed');
+    } catch (error) {
+        throw error;
+    }
 }
 
-// Download with lowest quality
-function downloadLowestQuality(videoUrl) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        
-        try {
-            const stream = ytdl(videoUrl, {
-                quality: 'lowestaudio',
-                filter: 'audioonly',
-            });
+// Method 3: Online Converter
+async function onlineConverterAPI(youtubeUrl) {
+    try {
+        const converters = [
+            {
+                url: 'https://api.convert2mp3.com/convert',
+                params: { url: youtubeUrl, format: 'mp3' }
+            },
+            {
+                url: 'https://onlinevideoconverter.com/api/convert',
+                params: { url: youtubeUrl, format: 'mp3' }
+            }
+        ];
 
-            stream.on('data', chunk => chunks.push(chunk));
-            stream.on('end', () => resolve(Buffer.concat(chunks)));
-            stream.on('error', reject);
+        for (const converter of converters) {
+            try {
+                const response = await axios.get(converter.url, {
+                    params: converter.params,
+                    timeout: 10000
+                });
 
-            setTimeout(() => reject(new Error('Download timeout')), 45000);
-
-        } catch (error) {
-            reject(error);
+                if (response.data && response.data.downloadUrl) {
+                    return {
+                        success: true,
+                        audioUrl: response.data.downloadUrl,
+                        source: 'Online Converter'
+                    };
+                }
+            } catch (error) {
+                continue;
+            }
         }
-    });
+        throw new Error('All converters failed');
+    } catch (error) {
+        throw error;
+    }
 }
 
-// Alternative: Use external API as fallback
-module.exports.alt = {
-    name: 'play2',
-    description: 'Alternative music download using external service',
+// Method 4: YouTube Alternative Frontend
+async function youtubeAlternative(youtubeUrl) {
+    try {
+        const alternatives = [
+            `https://invidious.snopyta.org/api/v1/videos/${getVideoId(youtubeUrl)}`,
+            `https://yewtu.be/api/v1/videos/${getVideoId(youtubeUrl)}`,
+            `https://inv.riverside.rocks/api/v1/videos/${getVideoId(youtubeUrl)}`
+        ];
+
+        for (const altUrl of alternatives) {
+            try {
+                const response = await axios.get(altUrl, {
+                    timeout: 10000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+
+                if (response.data && response.data.audioStreams && response.data.audioStreams.length > 0) {
+                    const bestAudio = response.data.audioStreams.reduce((best, current) => {
+                        return current.bitrate > best.bitrate ? current : best;
+                    });
+
+                    return {
+                        success: true,
+                        audioUrl: bestAudio.url,
+                        source: 'YouTube Alternative'
+                    };
+                }
+            } catch (error) {
+                continue;
+            }
+        }
+        throw new Error('All alternatives failed');
+    } catch (error) {
+        throw error;
+    }
+}
+
+// Utility functions
+function getVideoId(url) {
+    const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+    return match ? match[1] : null;
+}
+
+function cleanFileName(name) {
+    return name.replace(/[^a-z0-9]/gi, '_').substring(0, 40);
+}
+
+// Fast download command for quick results
+module.exports.fast = {
+    name: 'playfast',
+    description: 'Fast music download with direct links',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
         if (!args.length) {
             await sock.sendMessage(from, {
-                text: 'Usage: .play2 <song name>'
+                text: '⚡ Usage: .playfast <song name>'
             }, { quoted: msg });
             return;
         }
@@ -185,39 +333,82 @@ module.exports.alt = {
         
         try {
             await sock.sendMessage(from, {
-                text: `🔍 Searching: "${searchQuery}"\nUsing alternative method...`
-            }, { quoted: msg });
+                react: {
+                    text: '⚡',
+                    key: msg.key
+                }
+            });
 
-            // Use a different search approach
-            const searchResult = await yts(searchQuery + ' audio');
-            
+            // Quick search
+            const searchResult = await yts(searchQuery);
             if (!searchResult.videos.length) {
-                await sock.sendMessage(from, {
-                    text: `❌ No results found`
-                });
+                await sock.sendMessage(from, { text: '❌ No results' });
                 return;
             }
 
             const video = searchResult.videos[0];
             
-            // Send the YouTube link as alternative
-            await sock.sendMessage(from, {
-                text: `🎵 *Alternative Solution*\n\nSince downloads are currently limited, here's the YouTube link:\n\n${video.url}\n\nTitle: ${video.title}\nDuration: ${video.timestamp}`
-            });
+            // Use a simple direct service
+            const audioUrl = await getDirectDownloadLink(video.url);
+            
+            if (audioUrl) {
+                await sock.sendMessage(from, {
+                    audio: { url: audioUrl },
+                    mimetype: 'audio/mpeg',
+                    fileName: `${cleanFileName(video.title)}.mp3`
+                }, { quoted: msg });
+
+                await sock.sendMessage(from, {
+                    react: {
+                        text: '✅',
+                        key: msg.key
+                    }
+                });
+            } else {
+                await sock.sendMessage(from, {
+                    text: `🎵 ${video.title}\n🔗 ${video.url}\n\n💡 Direct download not available. Here's the YouTube link.`
+                });
+            }
 
         } catch (error) {
-            console.error('Play2 error:', error);
+            console.error('Fast play error:', error);
             await sock.sendMessage(from, {
-                text: `❌ Alternative method also failed`
+                text: '⚡ Fast download failed. Try .play for advanced methods.'
             });
         }
     }
 };
 
-// Simple search only command
+// Direct download link generator
+async function getDirectDownloadLink(youtubeUrl) {
+    try {
+        const videoId = getVideoId(youtubeUrl);
+        const services = [
+            `https://api.download-lagu-mp3.com/@api/button/mp3/${videoId}`,
+            `https://convert2mp3.info/api/button/mp3/${videoId}`,
+            `https://ytmp3.cc/api/button/mp3/${videoId}`
+        ];
+
+        for (const service of services) {
+            try {
+                const response = await axios.get(service, { timeout: 8000 });
+                if (response.data && response.data.direct_link) {
+                    return response.data.direct_link;
+                }
+            } catch (error) {
+                continue;
+            }
+        }
+        return null;
+    } catch (error) {
+        return null;
+    }
+}
+
+// Bulk music search
 module.exports.search = {
     name: 'music',
-    description: 'Search for music and get YouTube links',
+    description: 'Search multiple music results',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
@@ -231,31 +422,29 @@ module.exports.search = {
         const query = args.join(' ');
         
         try {
-            await sock.sendMessage(from, {
-                text: `🔍 Searching for "${query}"...`
-            });
-
             const searchResult = await yts(query);
             
             if (!searchResult.videos.length) {
-                await sock.sendMessage(from, {
-                    text: `❌ No results found`
-                });
+                await sock.sendMessage(from, { text: '❌ No results' });
                 return;
             }
 
-            let results = `🎵 *Search Results:*\n\n`;
+            let results = `🎵 *Search Results for "*${query}*"*\n\n`;
             
-            searchResult.videos.slice(0, 3).forEach((video, index) => {
+            searchResult.videos.slice(0, 5).forEach((video, index) => {
                 results += `${index + 1}. *${video.title}*\n`;
                 results += `   👤 ${video.author.name}\n`;
                 results += `   ⏱️ ${video.timestamp}\n`;
-                results += `   🔗 ${video.url}\n\n`;
+                results += `   👁️ ${formatViews(video.views)}\n\n`;
             });
 
-            results += '💡 *Note:* Direct downloads may be limited due to YouTube restrictions';
+            results += '💡 *Reply with:* .play <number> to download';
 
             await sock.sendMessage(from, { text: results });
+
+            // Store for quick access
+            if (!global.musicCache) global.musicCache = new Map();
+            global.musicCache.set(from, searchResult.videos.slice(0, 5));
 
         } catch (error) {
             console.error('Music search error:', error);
@@ -266,60 +455,8 @@ module.exports.search = {
     }
 };
 
-// YouTube link converter (if download works for some videos)
-module.exports.link = {
-    name: 'yt',
-    description: 'Download from specific YouTube URL',
-    async execute(sock, msg, args) {
-        const from = msg.key.remoteJid;
-        
-        if (!args.length) {
-            await sock.sendMessage(from, {
-                text: 'Usage: .yt <youtube-url>'
-            }, { quoted: msg });
-            return;
-        }
-
-        const youtubeUrl = args[0];
-        
-        if (!ytdl.validateURL(youtubeUrl)) {
-            await sock.sendMessage(from, {
-                text: '❌ Invalid YouTube URL'
-            }, { quoted: msg });
-            return;
-        }
-
-        try {
-            await sock.sendMessage(from, {
-                text: '⬇️ Attempting to download from YouTube URL...'
-            }, { quoted: msg });
-
-            const info = await ytdl.getInfo(youtubeUrl);
-            const title = info.videoDetails.title;
-
-            const audioBuffer = await downloadBasic(youtubeUrl);
-            
-            if (audioBuffer) {
-                await sock.sendMessage(from, {
-                    audio: audioBuffer,
-                    mimetype: 'audio/mpeg',
-                    fileName: `${title.substring(0, 40)}.mp3`
-                });
-                
-                await sock.sendMessage(from, {
-                    text: `✅ Downloaded: ${title}`
-                });
-            } else {
-                await sock.sendMessage(from, {
-                    text: `❌ Failed to download: ${title}`
-                });
-            }
-
-        } catch (error) {
-            console.error('YT download error:', error);
-            await sock.sendMessage(from, {
-                text: `❌ Download failed: ${error.message}`
-            });
-        }
-    }
-};
+function formatViews(views) {
+    if (views >= 1000000) return (views / 1000000).toFixed(1) + 'M';
+    if (views >= 1000) return (views / 1000).toFixed(1) + 'K';
+    return views;
+}
