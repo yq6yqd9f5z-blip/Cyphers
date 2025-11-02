@@ -26,7 +26,9 @@
     "ytdl-core": "^4.11.5",
         "youtube-dl-exec": "^3.0.0",
       "cheerio":"^1.0.0",
-     "@napi-rs/canvas": "^0.1.52"
+     "@napi-rs/canvas": "^0.1.52",
+     "ytdl-core": "^4.11.5",
+  "yt-search": "^2.13.1"
   },
   "engines": {
     "node": ">=18.0.0"
