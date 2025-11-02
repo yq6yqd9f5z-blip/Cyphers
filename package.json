@@ -28,7 +28,8 @@
       "cheerio":"^1.0.0",
      "@napi-rs/canvas": "^0.1.52",
      "ytdl-core": "^4.11.5",
-  "yt-search": "^2.13.1"
+  "yt-search": "^2.13.1",
+    "play-dl": "^1.9.7"
   },
   "engines": {
     "node": ">=18.0.0"
