@@ -2,17 +2,17 @@ const ytdl = require('ytdl-core');
 const yts = require('yt-search');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const axios = require('axios');
 
 module.exports = {
     name: 'play',
-    description: 'Download audio and video from YouTube - Working Version',
+    description: 'Download music from YouTube - Updated Working Version',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
         if (!args.length) {
             await sock.sendMessage(from, {
-                text: `🎵 *MUSIC DOWNLOADER*\n\nUsage: .play <song name>\n\nExamples:\n.play believer imagine dragons\n.play asake\n.play latest naija music`
+                text: `🎵 *MUSIC DOWNLOADER*\n\nUsage: .play <song name>\n\nExamples:\n.play believer\n.play asake\n.play omah lay`
             }, { quoted: msg });
             return;
         }
@@ -34,56 +34,30 @@ module.exports = {
                 return;
             }
 
-            // Get the best video
+            // Get the first video
             const video = searchResult.videos[0];
             const videoUrl = video.url;
             const videoTitle = video.title;
 
-            console.log(`🎬 Downloading: ${videoTitle}`);
+            console.log(`🎬 Attempting download: ${videoTitle}`);
 
-            // Create temp directory
-            const tempDir = './temp_downloads';
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
-
-            const timestamp = Date.now();
-            const audioPath = path.join(tempDir, `audio_${timestamp}.mp3`);
-
-            // Download audio first (most reliable)
-            await sock.sendMessage(from, {
-                text: `⬇️ Downloading audio...`
-            });
-
-            const audioSuccess = await downloadAudioSimple(videoUrl, audioPath);
+            // Try multiple download methods
+            const audioBuffer = await tryMultipleDownloadMethods(videoUrl);
             
-            if (audioSuccess) {
-                const audioStats = fs.statSync(audioPath);
-                const audioSizeMB = audioStats.size / (1024 * 1024);
+            if (audioBuffer) {
+                await sock.sendMessage(from, {
+                    audio: audioBuffer,
+                    mimetype: 'audio/mpeg',
+                    fileName: `${videoTitle.substring(0, 40)}.mp3`,
+                    ptt: false
+                });
                 
-                if (audioSizeMB <= 16) {
-                    await sock.sendMessage(from, {
-                        audio: fs.readFileSync(audioPath),
-                        mimetype: 'audio/mpeg',
-                        fileName: `${videoTitle.substring(0, 40)}.mp3`,
-                        ptt: false
-                    });
-                    
-                    await sock.sendMessage(from, {
-                        text: `✅ *Download Complete!*\n\n🎵 ${videoTitle}\n💾 ${audioSizeMB.toFixed(1)}MB\n🎧 Audio delivered successfully!`
-                    });
-                } else {
-                    await sock.sendMessage(from, {
-                        text: `❌ File too large: ${audioSizeMB.toFixed(1)}MB (max 16MB)`
-                    });
-                }
-                
-                // Cleanup
-                if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-                
+                await sock.sendMessage(from, {
+                    text: `✅ *Download Complete!*\n\n🎵 ${videoTitle}\n🎤 ${video.author.name}\n⏱️ ${video.timestamp}\n\nEnjoy your music! 🎧`
+                });
             } else {
                 await sock.sendMessage(from, {
-                    text: `❌ Download failed. The video may be restricted or unavailable.`
+                    text: `❌ Download failed for: ${videoTitle}\n\nThis video may be restricted or unavailable for download.`
                 });
             }
 
@@ -96,76 +70,154 @@ module.exports = {
     }
 };
 
-// Simple reliable audio download
-function downloadAudioSimple(videoUrl, outputPath) {
-    return new Promise((resolve) => {
+// Try multiple download methods
+async function tryMultipleDownloadMethods(videoUrl) {
+    // Method 1: Try with different quality options
+    try {
+        console.log('🔄 Trying method 1: Standard download');
+        return await downloadWithRetry(videoUrl);
+    } catch (error) {
+        console.log('Method 1 failed:', error.message);
+    }
+
+    // Method 2: Try with no options
+    try {
+        console.log('🔄 Trying method 2: Basic download');
+        return await downloadBasic(videoUrl);
+    } catch (error) {
+        console.log('Method 2 failed:', error.message);
+    }
+
+    // Method 3: Try with lowest quality
+    try {
+        console.log('🔄 Trying method 3: Lowest quality');
+        return await downloadLowestQuality(videoUrl);
+    } catch (error) {
+        console.log('Method 3 failed:', error.message);
+    }
+
+    return null;
+}
+
+// Download with retry logic
+function downloadWithRetry(videoUrl) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        
         try {
             const stream = ytdl(videoUrl, {
                 quality: 'highestaudio',
                 filter: 'audioonly',
+                highWaterMark: 1 << 25,
             });
 
-            const writeStream = fs.createWriteStream(outputPath);
-            
-            stream.pipe(writeStream);
+            stream.on('data', chunk => chunks.push(chunk));
+            stream.on('end', () => resolve(Buffer.concat(chunks)));
+            stream.on('error', reject);
 
-            stream.on('end', () => {
-                console.log('✅ Audio download completed');
-                resolve(true);
-            });
-
-            stream.on('error', (error) => {
-                console.error('Audio download error:', error);
-                resolve(false);
-            });
-
-            writeStream.on('error', (error) => {
-                console.error('File write error:', error);
-                resolve(false);
-            });
-
-            // Timeout after 30 seconds
-            setTimeout(() => {
-                if (writeStream.writable) {
-                    writeStream.destroy();
-                    resolve(false);
-                }
-            }, 30000);
+            // Timeout after 45 seconds
+            setTimeout(() => reject(new Error('Download timeout')), 45000);
 
         } catch (error) {
-            console.error('Download function error:', error);
-            resolve(false);
+            reject(error);
         }
     });
 }
 
-// Alternative download method using different quality
-function downloadAudioAlternative(videoUrl, outputPath) {
-    return new Promise((resolve) => {
+// Basic download without options
+function downloadBasic(videoUrl) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        
+        try {
+            const stream = ytdl(videoUrl);
+
+            stream.on('data', chunk => chunks.push(chunk));
+            stream.on('end', () => resolve(Buffer.concat(chunks)));
+            stream.on('error', reject);
+
+            setTimeout(() => reject(new Error('Download timeout')), 45000);
+
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Download with lowest quality
+function downloadLowestQuality(videoUrl) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        
         try {
             const stream = ytdl(videoUrl, {
                 quality: 'lowestaudio',
                 filter: 'audioonly',
             });
 
-            const writeStream = fs.createWriteStream(outputPath);
-            
-            stream.pipe(writeStream);
+            stream.on('data', chunk => chunks.push(chunk));
+            stream.on('end', () => resolve(Buffer.concat(chunks)));
+            stream.on('error', reject);
 
-            stream.on('end', () => resolve(true));
-            stream.on('error', () => resolve(false));
-            writeStream.on('error', () => resolve(false));
+            setTimeout(() => reject(new Error('Download timeout')), 45000);
 
         } catch (error) {
-            resolve(false);
+            reject(error);
         }
     });
 }
 
-// Quick search command
+// Alternative: Use external API as fallback
+module.exports.alt = {
+    name: 'play2',
+    description: 'Alternative music download using external service',
+    async execute(sock, msg, args) {
+        const from = msg.key.remoteJid;
+        
+        if (!args.length) {
+            await sock.sendMessage(from, {
+                text: 'Usage: .play2 <song name>'
+            }, { quoted: msg });
+            return;
+        }
+
+        const searchQuery = args.join(' ');
+        
+        try {
+            await sock.sendMessage(from, {
+                text: `🔍 Searching: "${searchQuery}"\nUsing alternative method...`
+            }, { quoted: msg });
+
+            // Use a different search approach
+            const searchResult = await yts(searchQuery + ' audio');
+            
+            if (!searchResult.videos.length) {
+                await sock.sendMessage(from, {
+                    text: `❌ No results found`
+                });
+                return;
+            }
+
+            const video = searchResult.videos[0];
+            
+            // Send the YouTube link as alternative
+            await sock.sendMessage(from, {
+                text: `🎵 *Alternative Solution*\n\nSince downloads are currently limited, here's the YouTube link:\n\n${video.url}\n\nTitle: ${video.title}\nDuration: ${video.timestamp}`
+            });
+
+        } catch (error) {
+            console.error('Play2 error:', error);
+            await sock.sendMessage(from, {
+                text: `❌ Alternative method also failed`
+            });
+        }
+    }
+};
+
+// Simple search only command
 module.exports.search = {
     name: 'music',
-    description: 'Search for music before downloading',
+    description: 'Search for music and get YouTube links',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
@@ -187,26 +239,23 @@ module.exports.search = {
             
             if (!searchResult.videos.length) {
                 await sock.sendMessage(from, {
-                    text: `❌ No results found for "${query}"`
+                    text: `❌ No results found`
                 });
                 return;
             }
 
             let results = `🎵 *Search Results:*\n\n`;
             
-            searchResult.videos.slice(0, 5).forEach((video, index) => {
-                results += `${index + 1}. ${video.title}\n`;
+            searchResult.videos.slice(0, 3).forEach((video, index) => {
+                results += `${index + 1}. *${video.title}*\n`;
                 results += `   👤 ${video.author.name}\n`;
-                results += `   ⏱️ ${video.timestamp}\n\n`;
+                results += `   ⏱️ ${video.timestamp}\n`;
+                results += `   🔗 ${video.url}\n\n`;
             });
 
-            results += '💡 Reply with: .play <number>';
+            results += '💡 *Note:* Direct downloads may be limited due to YouTube restrictions';
 
             await sock.sendMessage(from, { text: results });
-
-            // Store results for quick download
-            if (!global.musicResults) global.musicResults = new Map();
-            global.musicResults.set(from, searchResult.videos.slice(0, 5));
 
         } catch (error) {
             console.error('Music search error:', error);
@@ -217,70 +266,60 @@ module.exports.search = {
     }
 };
 
-// Quick download from search results
-module.exports.quick = {
-    name: 'play',
-    description: 'Quick download from search results',
+// YouTube link converter (if download works for some videos)
+module.exports.link = {
+    name: 'yt',
+    description: 'Download from specific YouTube URL',
     async execute(sock, msg, args) {
         const from = msg.key.remoteJid;
         
-        if (!args.length || !global.musicResults?.get(from)) {
+        if (!args.length) {
             await sock.sendMessage(from, {
-                text: '❌ No search results found. Use .music first.'
+                text: 'Usage: .yt <youtube-url>'
             }, { quoted: msg });
             return;
         }
 
-        const num = parseInt(args[0]);
-        const videos = global.musicResults.get(from);
-
-        if (isNaN(num) || num < 1 || num > videos.length) {
+        const youtubeUrl = args[0];
+        
+        if (!ytdl.validateURL(youtubeUrl)) {
             await sock.sendMessage(from, {
-                text: `❌ Please select a number between 1-${videos.length}`
+                text: '❌ Invalid YouTube URL'
             }, { quoted: msg });
             return;
         }
 
-        const selectedVideo = videos[num - 1];
-        
-        // Use the main play function
-        const mainModule = require('./play');
-        await mainModule.execute(sock, msg, selectedVideo.title.split(' '));
-    }
-};
-
-// Test command to check if downloads work
-module.exports.test = {
-    name: 'testplay',
-    description: 'Test music download with a known working song',
-    async execute(sock, msg, args) {
-        const from = msg.key.remoteJid;
-        
-        await sock.sendMessage(from, {
-            text: '🧪 Testing music download with a known working song...'
-        }, { quoted: msg });
-
-        // Use a simple, reliable test song
-        const mainModule = require('./play');
-        await mainModule.execute(sock, msg, ['believer', 'imagine', 'dragons']);
-    }
-};
-
-// Cleanup temp files periodically
-setInterval(() => {
-    const tempDir = './temp_downloads';
-    if (fs.existsSync(tempDir)) {
         try {
-            const files = fs.readdirSync(tempDir);
-            files.forEach(file => {
-                try {
-                    fs.unlinkSync(path.join(tempDir, file));
-                } catch (e) {
-                    // Ignore errors during cleanup
-                }
-            });
+            await sock.sendMessage(from, {
+                text: '⬇️ Attempting to download from YouTube URL...'
+            }, { quoted: msg });
+
+            const info = await ytdl.getInfo(youtubeUrl);
+            const title = info.videoDetails.title;
+
+            const audioBuffer = await downloadBasic(youtubeUrl);
+            
+            if (audioBuffer) {
+                await sock.sendMessage(from, {
+                    audio: audioBuffer,
+                    mimetype: 'audio/mpeg',
+                    fileName: `${title.substring(0, 40)}.mp3`
+                });
+                
+                await sock.sendMessage(from, {
+                    text: `✅ Downloaded: ${title}`
+                });
+            } else {
+                await sock.sendMessage(from, {
+                    text: `❌ Failed to download: ${title}`
+                });
+            }
+
         } catch (error) {
-            console.log('Cleanup error:', error.message);
+            console.error('YT download error:', error);
+            await sock.sendMessage(from, {
+                text: `❌ Download failed: ${error.message}`
+            });
         }
     }
-}, 600000); // Clean every 10 minutes
+};
